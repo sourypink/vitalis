@@ -1,10 +1,7 @@
 import type { Reason } from './engine/assess'
-import { LEAF_CAPTION, LEAF_LABEL, type Decision, type Leaf, type Mode, type RiskLabel } from './engine/decide'
+import { LEAF_CAPTION, LEAF_LABEL, type Decision, type Leaf, type RiskLabel } from './engine/decide'
 import { Z_FLAG } from './engine/constants'
 import type { Stat } from './engine/stats'
-
-const LABEL_WORD: Record<RiskLabel, string> = { HIGH: 'High', MEDIUM: 'Medium', LOW: 'Low' }
-export const COLOUR_WORD: Record<RiskLabel, string> = { HIGH: 'red', MEDIUM: 'yellow', LOW: 'green' }
 
 /** Colour is never alone: every badge carries its text label. */
 export function RiskBadge({ label }: { label: RiskLabel }) {
@@ -13,43 +10,6 @@ export function RiskBadge({ label }: { label: RiskLabel }) {
       <span className="dot" aria-hidden="true" />
       {label}
     </span>
-  )
-}
-
-function RiskIcon({ label }: { label: RiskLabel }) {
-  const shape =
-    label === 'HIGH' ? (
-      <path d="M22 4 41 38H3z" fill="none" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
-    ) : label === 'MEDIUM' ? (
-      <circle cx="22" cy="22" r="18" fill="none" stroke="currentColor" strokeWidth="4" />
-    ) : (
-      <path d="M8 23l9 9 19-20" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-    )
-  const mark = label === 'LOW' ? null : (
-    <path d={label === 'HIGH' ? 'M22 15v11M22 31v1' : 'M15 22h14'} stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-  )
-  return (
-    <svg className="risk-icon" viewBox="0 0 44 44" aria-hidden="true">
-      {shape}
-      {mark}
-    </svg>
-  )
-}
-
-export function RiskLabelCard({ decision, subject }: { decision: Decision; subject: string }) {
-  return (
-    <div className={`risk-label risk-${decision.label}`} role="status">
-      <RiskIcon label={decision.label} />
-      <div>
-        <div className="big">{decision.label}</div>
-        <div>
-          <b>
-            {LABEL_WORD[decision.label]} risk ({COLOUR_WORD[decision.label]})
-          </b>{' '}
-          · {LEAF_CAPTION[decision.leaf]} · {subject}
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -72,21 +32,17 @@ export function WhyList({ why }: { why: Reason[] }) {
   )
 }
 
-const ROOT_DETAIL: Record<Mode, string> = {
-  athlete: 'Load spike, e.g. ACWR ≥1.5 [14], short sleep or low HRV',
-  older: 'Slower walking or TUG ≥12 s [17], or a fall',
-}
 const LEAVES: Leaf[] = ['high', 'medium-recover', 'medium-movement', 'low']
 
 /** The same tree as on the poster, with today's path drawn heavier. */
-export function DecisionTree({ decision, mode }: { decision: Decision; mode: Mode }) {
+export function DecisionTree({ decision }: { decision: Decision }) {
   const left = decision.branch === 'checkin'
   const leafIndex = LEAVES.indexOf(decision.leaf)
   return (
     <div className="tree" aria-label={`Decision path: ${pathText(decision)}`}>
       <div className="tree-node on">
-        <b>Big change from their normal?</b>
-        {ROOT_DETAIL[mode]}
+        <b>Walking or balance below your normal?</b>
+        slower walking, stand-up test ≥12 s [17], or a fall
       </div>
       <div className="tree-link" aria-hidden="true">
         <span className={left ? 'on' : undefined}>Yes</span>
@@ -99,7 +55,7 @@ export function DecisionTree({ decision, mode }: { decision: Decision; mode: Mod
         </div>
         <div className={`tree-node${left ? '' : ' on'}`}>
           <b>Risky movement on video?</b>
-          {mode === 'athlete' ? 'knee caving in' : 'unsteady stand-up'}
+          unsteady standing up (camera opt-in)
         </div>
       </div>
       <div className="tree-link four" aria-hidden="true">
@@ -208,80 +164,6 @@ export function BaselineChart({
   )
 }
 
-/** Recorded pose skeletons from the poster (simulated; no camera is used). */
-export function Pose({ mode, risky }: { mode: Mode; risky: boolean }) {
-  if (mode === 'athlete') {
-    return (
-      <svg className="pose" viewBox="0 0 400 220" role="img" aria-label={risky ? 'Pose skeleton of an athlete landing with the left knee caving inward' : 'Pose skeleton of an athlete landing with knees in line'}>
-        <text x="14" y="28" fontSize="18" fill="#E6EBF0">Athlete · jump landing</text>
-        <text x="386" y="28" textAnchor="end" fontSize="18" fontWeight="700" fill={risky ? '#F49A90' : '#9FD8A4'}>
-          {risky ? '1 risk flagged' : 'No risk flagged'}
-        </text>
-        <path d="M130 204h140" stroke="#5B6875" strokeWidth="2" />
-        <g stroke="#8EC5F0" strokeWidth="3" strokeLinecap="round" fill="none">
-          <circle cx="200" cy="54" r="14" />
-          <path d="M200 68v52M174 80h52M174 80l-14 24-8 22M226 80l14 24 8 22M186 120h28M214 120l4 40 4 40" />
-          {!risky && <path d="M186 120l-4 40-4 40" />}
-        </g>
-        {risky && (
-          <>
-            <path d="M186 120l-4 80" stroke="#F49A90" strokeWidth="1.5" strokeDasharray="4 4" />
-            <path d="M186 120l12 40-18 40" stroke="#F06A5E" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            <circle cx="198" cy="160" r="7" fill="#F06A5E" />
-          </>
-        )}
-        <g fill="#FFFFFF">
-          {[[174, 80], [226, 80], [160, 104], [240, 104], [186, 120], [214, 120], [218, 160], [222, 200], [risky ? 180 : 178, 200]].map(([cx, cy]) => (
-            <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="4" />
-          ))}
-          {!risky && <circle cx="182" cy="160" r="4" />}
-        </g>
-      </svg>
-    )
-  }
-  return (
-    <svg className="pose" viewBox="0 0 400 220" role="img" aria-label={risky ? 'Pose skeleton of an older adult leaning far forward and pushing off a chair to stand' : 'Pose skeleton of an older adult standing up from a chair steadily'}>
-      <text x="14" y="28" fontSize="18" fill="#E6EBF0">Older adult · standing up</text>
-      <text x="386" y="28" textAnchor="end" fontSize="18" fontWeight="700" fill={risky ? '#F2C94C' : '#9FD8A4'}>
-        {risky ? '1 change flagged' : 'No change flagged'}
-      </text>
-      <path d="M120 204h160" stroke="#5B6875" strokeWidth="2" />
-      <g stroke="#8A96A3" strokeWidth="4" strokeLinecap="round" fill="none">
-        <path d="M146 84v120M146 146h52M196 146v58" />
-      </g>
-      {risky ? (
-        <>
-          <path d="M200 146v-70" stroke="#F2C94C" strokeWidth="1.5" strokeDasharray="4 4" />
-          <path d="M200 106a40 40 0 0 1 22 -6" stroke="#F2C94C" strokeWidth="1.5" fill="none" />
-          <g stroke="#8EC5F0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none">
-            <circle cx="244" cy="64" r="13" />
-            <path d="M200 146l34 10 2 46M234 90l-18 28-14 22" />
-          </g>
-          <path d="M200 146l34 -56" stroke="#F2C94C" strokeWidth="5" strokeLinecap="round" />
-          <g fill="#FFFFFF">
-            {[[234, 90], [216, 118], [202, 140], [234, 156], [236, 202]].map(([cx, cy]) => (
-              <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="4" />
-            ))}
-          </g>
-          <circle cx="200" cy="146" r="7" fill="#F2C94C" />
-        </>
-      ) : (
-        <>
-          <g stroke="#8EC5F0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none">
-            <circle cx="222" cy="52" r="13" />
-            <path d="M216 66l-6 64M210 130l14 30 0 42M214 80l-14 30M214 80l12 30" />
-          </g>
-          <g fill="#FFFFFF">
-            {[[214, 80], [210, 130], [224, 160], [224, 202], [200, 110], [226, 110]].map(([cx, cy]) => (
-              <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="4" />
-            ))}
-          </g>
-        </>
-      )}
-    </svg>
-  )
-}
-
 export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button
@@ -293,5 +175,78 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
       disabled={disabled}
       onClick={() => onChange(!checked)}
     />
+  )
+}
+
+// Daily steps, last 7 days, with the personal "usual" as a dashed line.
+const BARS_WIDTH = 340
+const BARS_HEIGHT = 160
+const BARS_PAD = { top: 16, bottom: 26 }
+const BAR_GAP = 10
+
+export function StepsBars({ days, usual }: { days: { label: string; steps: number }[]; usual: number }) {
+  const max = Math.max(usual, ...days.map((day) => day.steps)) * 1.1
+  const innerHeight = BARS_HEIGHT - BARS_PAD.top - BARS_PAD.bottom
+  const barWidth = (BARS_WIDTH - BAR_GAP * (days.length - 1)) / days.length
+  const y = (steps: number) => BARS_PAD.top + (1 - steps / max) * innerHeight
+  return (
+    <figure style={{ margin: 0 }}>
+      <svg
+        className="chart"
+        viewBox={`0 0 ${BARS_WIDTH} ${BARS_HEIGHT}`}
+        role="img"
+        aria-label={`Steps per day, last ${days.length} days: ${days.map((day) => `${day.label} ${Math.round(day.steps)}`).join(', ')}. Your usual is ${Math.round(usual)}.`}
+      >
+        {days.map((day, index) => {
+          const x = index * (barWidth + BAR_GAP)
+          const today = index === days.length - 1
+          return (
+            <g key={day.label + index}>
+              <rect x={x} y={y(day.steps)} width={barWidth} height={y(0) - y(day.steps)} rx="6" fill={today ? 'var(--accent)' : 'var(--accent-soft)'} />
+              <text x={x + barWidth / 2} y={BARS_HEIGHT - 6} fontSize="13" textAnchor="middle" fill="var(--muted)" fontWeight={today ? 700 : 400}>
+                {day.label}
+              </text>
+            </g>
+          )
+        })}
+        <line x1="0" x2={BARS_WIDTH} y1={y(usual)} y2={y(usual)} stroke="var(--ink)" strokeWidth="1.5" strokeDasharray="5 4" />
+      </svg>
+      <figcaption className="legend">
+        <span>
+          <span className="swatch" style={{ background: 'var(--accent)' }} />
+          Today
+        </span>
+        <span>
+          <span className="swatch dashed" />
+          Your usual ({Math.round(usual).toLocaleString('en-US')})
+        </span>
+      </figcaption>
+    </figure>
+  )
+}
+
+/** Simple line icons (24 × 24, stroke). */
+export const ICONS = {
+  today: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  activity: 'M3 12h4l3-7 4 14 3-7h4',
+  reports: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',
+  tips: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
+  watch: 'M8 6h8v12H8zM9 6l1-4h4l1 4M9 18l1 4h4l1-4M12 10v2l1 1',
+  steps: 'M8 4c1.7 0 2.5 1.6 2.5 3.5S9.5 12 8 12s-2.5-2.6-2.5-4.5S6.3 4 8 4zM16 9c1.7 0 2.5 1.6 2.5 3.5S17.5 17 16 17s-2.5-2.6-2.5-4.5S14.3 9 16 9zM6 15h4v3a2 2 0 0 1-4 0zM14 20h4',
+  walk: 'M13 4a1.5 1.5 0 1 0 0-.01M10 21l2-6 3 3v3M9 12l2-4h3l2 4 2 1M11 8l-2 5',
+  sleep: 'M20 14A8 8 0 1 1 10 4a6.5 6.5 0 0 0 10 10z',
+  heart: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z',
+  check: 'M5 12l5 5 9-10',
+  send: 'M4 12l16-8-6 16-2-7z',
+  mic: 'M9 3h6v12H9zM5 11a7 7 0 0 0 14 0M12 18v3',
+  back: 'M15 5l-7 7 7 7',
+} as const
+
+export function Icon({ name, size = 24 }: { name: keyof typeof ICONS; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICONS[name]} />
+    </svg>
   )
 }

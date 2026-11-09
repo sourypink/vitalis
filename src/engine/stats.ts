@@ -1,10 +1,4 @@
-import {
-  ACWR_DANGER,
-  ACWR_SWEET_HIGH,
-  ACWR_SWEET_LOW,
-  BASELINE_DAYS,
-  Z_FLAG,
-} from './constants'
+import { BASELINE_DAYS, Z_FLAG } from './constants'
 
 export type Stat = { mean: number; sd: number }
 export type Baseline<K extends string> = Record<K, Stat>
@@ -38,21 +32,4 @@ export function baseline<K extends string>(series: Record<K, number>[], days = B
 export function zScore(today: number, stat: Stat): { z: number; flagged: boolean } {
   const z = stat.sd === 0 ? (today === stat.mean ? 0 : Math.sign(today - stat.mean) * Infinity) : (today - stat.mean) / stat.sd
   return { z, flagged: Math.abs(z) >= Z_FLAG }
-}
-
-/** Acute:chronic workload ratio: mean of the 7-day window over mean of the 28-day window. Gabbett 2016 [14]. */
-export function acwr(load7d: number[], load28d: number[]): number {
-  const chronic = mean(load28d)
-  if (chronic === 0) throw new Error('acwr() chronic load is zero')
-  return mean(load7d) / chronic
-}
-
-export type AcwrBand = 'under' | 'sweet' | 'caution' | 'danger'
-
-/** Gabbett 2016 bands [14]: < 0.8 under-loaded, 0.8–1.3 sweet spot, 1.3–1.5 caution, >= 1.5 danger. */
-export function acwrBand(ratio: number): AcwrBand {
-  if (ratio >= ACWR_DANGER) return 'danger'
-  if (ratio > ACWR_SWEET_HIGH) return 'caution'
-  if (ratio >= ACWR_SWEET_LOW) return 'sweet'
-  return 'under'
 }

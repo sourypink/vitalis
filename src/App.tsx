@@ -1,66 +1,75 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { assessAthlete, assessOlderAdult } from './engine/assess'
-import type { Mode } from './engine/decide'
-import {
-  ATHLETE_CHECK_INS,
-  ATHLETE_SCENARIOS,
-  OLDER_CHECK_INS,
-  OLDER_SCENARIOS,
-  demoAthleteHistory,
-  margaret,
-  type AthleteScenario,
-  type OlderScenario,
-} from './data/people'
-import { DEFAULT_SHARE, ROUTES, recipients, type Demo, type Route, type SentAlert, type Share } from './demo'
+import { Icon, type ICONS } from './components'
+import { CHECK_INS, simulate, type Scenario } from './data/simulate'
+import { DEFAULT_SHARE, ROUTES, type Ctx, type Route, type Saved, type SentItem } from './demo'
+import { findDevice } from './devices'
+import { assess } from './engine/assess'
 import { useFallEscalation, type FallStep } from './hooks'
 import { showBrowserNotification } from './notify'
-import { Alerts } from './screens/Alerts'
-import { CheckIn } from './screens/CheckIn'
-import { Dashboard } from './screens/Dashboard'
-import { Live } from './screens/Live'
-import { Privacy } from './screens/Privacy'
-import { Risk } from './screens/Risk'
-import { Start } from './screens/Start'
+import { Activity } from './screens/Activity'
+import { Connect } from './screens/Connect'
+import { Reports } from './screens/Reports'
+import { Settings } from './screens/Settings'
+import { Survey } from './screens/Survey'
+import { Tips } from './screens/Tips'
+import { Today } from './screens/Today'
+import { Welcome } from './screens/Welcome'
+import { DEMO_ANSWERS, EMPTY_ANSWERS, levelFromMinutes, weeklyMinutes } from './survey'
 
 const TOAST_MS = 6000
+const STORAGE_KEY = 'vitalis-app-v2'
+const DEFAULT_SAVED: Saved = {
+  draft: EMPTY_ANSWERS,
+  answers: null,
+  deviceId: null,
+  textSize: 'large',
+  doneTips: [],
+  share: DEFAULT_SHARE,
+  cameraConsent: false,
+}
 
-type Location = { mode: Mode | null; route: Route }
+// Storage can be missing (private windows); the app then simply forgets on reload.
+function loadSaved(): Saved {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    return raw ? { ...DEFAULT_SAVED, ...(JSON.parse(raw) as Partial<Saved>) } : DEFAULT_SAVED
+  } catch (error) {
+    console.warn('Vitalis: could not read saved settings', error)
+    return DEFAULT_SAVED
+  }
+}
+function storeSaved(saved: Saved) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))
+  } catch (error) {
+    console.warn('Vitalis: could not save settings', error)
+  }
+}
+
+type Location = { route: Route; step: number }
 
 function readHash(): Location {
-  const [modePart, routePart] = window.location.hash.replace(/^#\/?/, '').split('/')
-  const mode = modePart === 'athlete' || modePart === 'older' ? modePart : null
-  const route = ROUTES.includes(routePart as Route) ? (routePart as Route) : 'live'
-  return mode ? { mode, route } : { mode: null, route: 'start' }
+  const [routePart, stepPart] = window.location.hash.replace(/^#\/?/, '').split('/')
+  const route = ROUTES.includes(routePart as Route) ? (routePart as Route) : 'welcome'
+  return { route, step: Math.max(1, Number(stepPart) || 1) }
 }
 
-function assess(mode: Mode, scenario: AthleteScenario | OlderScenario, checkIn: string, riskyMovement: boolean, cameraConsent: boolean) {
-  if (mode === 'athlete') {
-    const history = demoAthleteHistory(scenario as AthleteScenario)
-    return { history, tug: [] as number[], assessment: assessAthlete({ history, checkIn, riskyMovement }) }
-  }
-  const data = margaret(scenario as OlderScenario)
-  return { history: data.history, tug: data.tug, assessment: assessOlderAdult({ ...data, checkIn, riskyMovement, cameraConsent }) }
-}
-
-const NAV: { route: Route; label: (mode: Mode) => string; icon: string }[] = [
-  { route: 'live', label: () => 'Live', icon: 'M3 12h4l3-7 4 14 3-7h4' },
-  { route: 'checkin', label: () => 'Check-in', icon: 'M4 5h16v11H8l-4 4z' },
-  { route: 'risk', label: () => 'Risk', icon: 'M12 3l9 16H3zM12 10v4M12 17v.5' },
-  { route: 'dashboard', label: (mode) => (mode === 'athlete' ? 'Coach' : 'Family'), icon: 'M4 20v-2a5 5 0 0 1 10 0v2M9 9a3 3 0 1 0 0-.01M15 4a3 3 0 0 1 0 6M20 20v-2a5 5 0 0 0-3-4.6' },
-  { route: 'alerts', label: () => 'Alerts', icon: 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0' },
-  { route: 'privacy', label: () => 'Privacy', icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4' },
+const TABS: { route: Route; label: string; icon: keyof typeof ICONS }[] = [
+  { route: 'today', label: 'Today', icon: 'today' },
+  { route: 'activity', label: 'Activity', icon: 'activity' },
+  { route: 'reports', label: 'Reports', icon: 'reports' },
+  { route: 'tips', label: 'Tips', icon: 'tips' },
+  { route: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
 export function App() {
   const [location, setLocation] = useState<Location>(readHash)
-  const [athleteScenario, setAthleteScenario] = useState<AthleteScenario>('normal')
-  const [olderScenario, setOlderScenario] = useState<OlderScenario>('normal')
-  const [checkIns, setCheckIns] = useState<Record<Mode, string>>({ athlete: ATHLETE_CHECK_INS.normal, older: OLDER_CHECK_INS.normal })
-  const [riskyMovement, setRiskyMovementState] = useState<Record<Mode, boolean>>({ athlete: false, older: false })
-  const [cameraConsent, setCameraConsent] = useState(false)
-  const [shares, setShares] = useState<Record<Mode, Share>>(DEFAULT_SHARE)
-  const [alerts, setAlerts] = useState<SentAlert[]>([])
-  const [toasts, setToasts] = useState<SentAlert[]>([])
+  const [saved, setSaved] = useState<Saved>(loadSaved)
+  const [scenario, setScenarioState] = useState<Scenario>('normal')
+  const [checkIn, setCheckIn] = useState(CHECK_INS.normal)
+  const [riskyMovement, setRiskyMovement] = useState(false)
+  const [sent, setSent] = useState<SentItem[]>([])
+  const [toasts, setToasts] = useState<SentItem[]>([])
   const nextId = useRef(1)
 
   useEffect(() => {
@@ -72,135 +81,180 @@ export function App() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  const notify = useCallback((title: string, body: string, to: string[]) => {
-    const alert: SentAlert = { id: nextId.current++, time: new Date(), to, title, body, browser: false }
-    setToasts((current) => [...current.slice(-1), alert])
-    window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== alert.id)), TOAST_MS)
-    setAlerts((current) => [...current, alert])
+  useEffect(() => storeSaved(saved), [saved])
+  useEffect(() => {
+    document.documentElement.dataset.textSize = saved.textSize
+  }, [saved.textSize])
+
+  const update = useCallback((patch: Partial<Saved>) => setSaved((current) => ({ ...current, ...patch })), [])
+  const go = useCallback((route: Route, step?: number) => {
+    window.location.hash = route === 'welcome' ? '#/' : step ? `#/${route}/${step}` : `#/${route}`
+  }, [])
+
+  const answers = saved.answers ?? DEMO_ANSWERS
+  const familyLabel = `${answers.familyName || 'Family'}${answers.familyRelation ? ` (${answers.familyRelation})` : ''}`
+  const name = answers.name || 'You'
+  const device = findDevice(saved.deviceId)
+  const minutes = weeklyMinutes(answers)
+  const surveyLevel = levelFromMinutes(minutes)
+  const alertRecipients = [
+    `${name} (you)`,
+    ...(saved.share.alerts.family ? [familyLabel] : []),
+    ...(saved.share.alerts.doctor && answers.doctorName ? [answers.doctorName] : []),
+  ]
+
+  const notify = useCallback((title: string, body: string, to: string[], kind: SentItem['kind']) => {
+    const item: SentItem = { id: nextId.current++, time: new Date(), kind, to, title, body, browser: false }
+    setToasts((current) => [...current.slice(-1), item])
+    window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== item.id)), TOAST_MS)
+    setSent((current) => [...current, item])
     showBrowserNotification(title, body)
       .then((shown) => {
-        if (shown) setAlerts((current) => current.map((entry) => (entry.id === alert.id ? { ...entry, browser: true } : entry)))
+        if (shown) setSent((current) => current.map((entry) => (entry.id === item.id ? { ...entry, browser: true } : entry)))
       })
       .catch((error: unknown) => console.error('Browser notification failed', error))
   }, [])
 
   const onFallStep = useCallback(
     (step: FallStep) => {
-      if (step.id === 'ask') notify('Margaret’s watch: Are you OK?', 'A hard fall was detected. Tap “I’m OK” within 60 s to cancel.', ['Margaret'])
-      if (step.id === 'family') notify('Vitalis · Margaret may have fallen', 'No response for 60 s. Call her now. Emergency call in 30 s.', ['Sarah (daughter)'])
-      if (step.id === 'emergency') notify('Emergency call (mock)', 'Demo: no call is placed. A real watch would call emergency services and share her location.', ['Emergency services (mock)'])
+      if (step.id === 'ask') notify('Your watch: Are you OK?', 'A hard fall was detected. Tap “I’m OK” within 60 s to cancel.', [`${name} (you)`], 'alert')
+      if (step.id === 'family') notify(`Vitalis · ${name} may have fallen`, 'No response for 60 s. Call now. Emergency call in 30 s.', [familyLabel], 'alert')
+      if (step.id === 'emergency') notify('Emergency call (mock)', 'Demo: no call is placed. A real watch would call emergency services and share the location.', ['Emergency services (mock)'], 'alert')
     },
-    [notify],
+    [notify, name, familyLabel],
   )
   const fall = useFallEscalation(onFallStep)
 
-  const mode = location.mode ?? 'athlete'
-  const scenario = mode === 'athlete' ? athleteScenario : olderScenario
-  const checkIn = checkIns[mode]
-  const share = shares[mode]
-  const current = useMemo(
-    () => assess(mode, scenario, checkIn, riskyMovement[mode], cameraConsent),
-    [mode, scenario, checkIn, riskyMovement, cameraConsent],
+  const typicalSteps = surveyLevel.typicalSteps
+  const data = useMemo(() => simulate(scenario, typicalSteps), [scenario, typicalSteps])
+  const assessment = useMemo(
+    () => (device ? assess({ ...data, checkIn, riskyMovement, cameraConsent: saved.cameraConsent }) : null),
+    [device, data, checkIn, riskyMovement, saved.cameraConsent],
   )
 
-  const notifyRisk = useCallback(
-    (result: ReturnType<typeof assess>['assessment']) => {
-      if (result.decision.label === 'LOW') return
-      const who = result.mode === 'athlete' ? 'Player 7' : 'Margaret'
-      const shorts = result.why.filter((reason) => reason.flagged).map((reason) => reason.short).join(', ')
-      const reasons = shorts.charAt(0).toUpperCase() + shorts.slice(1)
-      notify(`Vitalis · ${who}: ${result.decision.label} risk`, `${reasons}. ${result.recommendation}`, recipients(result.mode, shares[result.mode]))
-    },
-    [notify, shares],
-  )
-
-  const go = useCallback((route: Route) => {
-    window.location.hash = route === 'start' ? '#/' : `#/${mode}/${route}`
-  }, [mode])
-
-  const setScenario = (id: AthleteScenario | OlderScenario) => {
-    const text = mode === 'athlete' ? ATHLETE_CHECK_INS[id as AthleteScenario] : OLDER_CHECK_INS[id as OlderScenario]
-    if (mode === 'athlete') setAthleteScenario(id as AthleteScenario)
-    else setOlderScenario(id as OlderScenario)
-    setCheckIns((all) => ({ ...all, [mode]: text }))
-    if (mode === 'older') {
-      if (id === 'fall') fall.start()
-      else fall.stop()
-    }
-    if (id !== 'fall') notifyRisk(assess(mode, id, text, riskyMovement[mode], cameraConsent).assessment)
+  const alertIfRisky = (result: ReturnType<typeof assess> | null) => {
+    if (!result || result.decision.label === 'LOW') return
+    const reasons = result.why.filter((reason) => reason.flagged).map((reason) => reason.short).join(', ')
+    notify(`Vitalis · ${name}: ${result.decision.label.toLowerCase()} fall risk`, `${reasons.charAt(0).toUpperCase()}${reasons.slice(1)}. ${result.recommendation}`, alertRecipients, 'alert')
   }
 
-  const demo: Demo = {
-    mode,
+  const setScenario = (next: Scenario) => {
+    setScenarioState(next)
+    setCheckIn(CHECK_INS[next])
+    if (next === 'fall') fall.start()
+    else {
+      fall.stop()
+      if (device) alertIfRisky(assess({ ...simulate(next, typicalSteps), checkIn: CHECK_INS[next], riskyMovement, cameraConsent: saved.cameraConsent }))
+    }
+  }
+
+  const signOut = () => {
+    fall.stop()
+    setScenarioState('normal')
+    setCheckIn(CHECK_INS.normal)
+    setSent([])
+    setSaved(DEFAULT_SAVED)
+    go('welcome')
+  }
+
+  const ctx: Ctx = {
+    saved,
+    update,
+    answers,
+    familyLabel,
+    device,
+    surveyLevel,
+    weeklyMinutes: minutes,
     scenario,
     setScenario,
+    riskyMovement,
+    setRiskyMovement,
     checkIn,
-    setCheckIn: (text) => setCheckIns((all) => ({ ...all, [mode]: text })),
-    submitCheckIn: () => {
-      notifyRisk(current.assessment)
-      go('risk')
-    },
-    riskyMovement: riskyMovement[mode],
-    setRiskyMovement: (on) => setRiskyMovementState((all) => ({ ...all, [mode]: on })),
-    cameraConsent,
-    setCameraConsent,
-    share,
-    setShare: (next) => setShares((all) => ({ ...all, [mode]: next })),
-    history: current.history,
-    tug: current.tug,
-    assessment: current.assessment,
+    setCheckIn,
+    saveCheckIn: () => alertIfRisky(assessment),
+    history: device ? data.history : null,
+    tug: data.tug,
+    assessment,
     notify,
-    alerts,
+    sent,
+    alertRecipients,
     fall,
     go,
+    signOut,
   }
 
-  const scenarios = mode === 'athlete' ? ATHLETE_SCENARIOS : OLDER_SCENARIOS
-  const onStart = location.mode === null
+  // No account yet: everything past the survey sends you back to the start.
+  const signedIn = saved.answers !== null
+  const route: Route = !signedIn && location.route !== 'survey' ? 'welcome' : location.route
+  const inApp = signedIn && TABS.some((tab) => tab.route === route)
+
+  let screen
+  if (route === 'welcome')
+    screen = (
+      <Welcome
+        signedIn={signedIn}
+        onSignIn={() => {
+          if (signedIn) return go('today')
+          update({ answers: DEMO_ANSWERS, draft: DEMO_ANSWERS, deviceId: saved.deviceId ?? 'apple' })
+          go('today')
+        }}
+        onCreate={() => {
+          update({ answers: null, draft: EMPTY_ANSWERS, deviceId: null, doneTips: [] })
+          go('survey', 1)
+        }}
+      />
+    )
+  else if (route === 'survey')
+    screen = (
+      <Survey
+        draft={saved.draft}
+        step={location.step}
+        setDraft={(draft) => update({ draft })}
+        go={(step) => go('survey', step)}
+        onExit={() => go(signedIn ? 'settings' : 'welcome')}
+        onFinish={() => {
+          update({ answers: saved.draft })
+          go(saved.deviceId ? 'today' : 'connect')
+        }}
+      />
+    )
+  else if (route === 'connect') screen = <Connect ctx={ctx} />
+  else if (route === 'today') screen = <Today ctx={ctx} />
+  else if (route === 'activity') screen = <Activity ctx={ctx} />
+  else if (route === 'reports') screen = <Reports ctx={ctx} />
+  else if (route === 'tips') screen = <Tips ctx={ctx} />
+  else screen = <Settings ctx={ctx} />
 
   return (
-    <div className={`app mode-${mode}`}>
-      <header className="top">
-        <div className="demo-banner">Demo · simulated data</div>
-        {!onStart && (
-          <>
-            <div className="top-row">
-              <a className="wordmark" href="#/">
-                Vitalis
-              </a>
-              <button type="button" className="mode-chip" onClick={() => go('start')} aria-label={`${mode === 'athlete' ? 'Athlete' : 'Older adult'} mode. Change mode`}>
-                <span className="dot" aria-hidden="true" />
-                {mode === 'athlete' ? 'Athlete mode' : 'Older adult mode'}
-              </button>
-            </div>
-            <div className="scenarios">
-              <div className="scenarios-label" id="scenario-label">
-                Scenario
-              </div>
-              <div className="segmented" role="group" aria-labelledby="scenario-label">
-                {scenarios.map((option) => (
-                  <button key={option.id} type="button" aria-pressed={option.id === scenario} onClick={() => setScenario(option.id)}>
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {fall.status === 'running' && location.route !== 'alerts' && (
-              <div className="fall-strip">
-                <a href={`#/${mode}/alerts`}>Fall escalation running · {Math.floor(fall.elapsed)} s · open →</a>
-              </div>
-            )}
-          </>
-        )}
-      </header>
+    <div className={`app${inApp ? ' in-app' : ''}`}>
+      {inApp && (
+        <nav className="nav" aria-label="Main">
+          <a className="nav-brand" href="#/today">
+            Vitalis
+          </a>
+          <ul>
+            {TABS.map((tab) => (
+              <li key={tab.route}>
+                <a href={`#/${tab.route}`} aria-current={route === tab.route ? 'page' : undefined}>
+                  <Icon name={tab.icon} />
+                  {tab.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p className="nav-foot">Prototype · simulated data</p>
+        </nav>
+      )}
 
-      {onStart && <Start onPick={(picked) => (window.location.hash = `#/${picked}/live`)} />}
-      {!onStart && location.route === 'live' && <Live demo={demo} />}
-      {!onStart && location.route === 'checkin' && <CheckIn demo={demo} />}
-      {!onStart && location.route === 'risk' && <Risk demo={demo} />}
-      {!onStart && location.route === 'dashboard' && <Dashboard demo={demo} />}
-      {!onStart && location.route === 'alerts' && <Alerts demo={demo} />}
-      {!onStart && location.route === 'privacy' && <Privacy demo={demo} />}
+      <div className="content">
+        {inApp && fall.status === 'running' && route !== 'today' && (
+          <a className="fall-strip" href="#/today">
+            Possible fall · help is being called · {Math.floor(fall.elapsed)} s · open
+          </a>
+        )}
+        {screen}
+        <p className="footnote">Prototype · simulated data · not medical advice</p>
+      </div>
 
       <div className="toasts" aria-live="polite">
         {toasts.map((toast) => (
@@ -216,23 +270,6 @@ export function App() {
           </div>
         ))}
       </div>
-
-      {!onStart && (
-        <nav className="nav" aria-label="Screens">
-          <ul>
-            {NAV.map((item) => (
-              <li key={item.route}>
-                <a href={`#/${mode}/${item.route}`} aria-current={location.route === item.route ? 'page' : undefined}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d={item.icon} />
-                  </svg>
-                  {item.label(mode)}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
     </div>
   )
 }

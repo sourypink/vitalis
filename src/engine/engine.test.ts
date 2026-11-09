@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { checkInFlags } from './checkin'
-import { ACWR_DANGER, TUG_RISK_SECONDS, Z_FLAG } from './constants'
+import { TUG_RISK_SECONDS, Z_FLAG } from './constants'
 import { decide, recommend } from './decide'
-import { acwr, acwrBand, baseline, zScore } from './stats'
+import { baseline, zScore } from './stats'
 
 describe('baseline', () => {
   it('returns mean and sample SD per metric over the last N days', () => {
@@ -29,23 +29,6 @@ describe('zScore', () => {
   it('handles a zero SD without dividing by zero', () => {
     expect(zScore(5, { mean: 5, sd: 0 })).toEqual({ z: 0, flagged: false })
     expect(zScore(6, { mean: 5, sd: 0 }).flagged).toBe(true)
-  })
-})
-
-describe('acwr', () => {
-  it('divides the 7-day mean by the 28-day mean', () => {
-    const load28d = [...Array(21).fill(100), ...Array(7).fill(200)]
-    expect(acwr(load28d.slice(-7), load28d)).toBeCloseTo(1.6, 5)
-  })
-  it('uses the Gabbett 2016 bands', () => {
-    expect(acwrBand(0.7)).toBe('under')
-    expect(acwrBand(0.8)).toBe('sweet')
-    expect(acwrBand(1.3)).toBe('sweet')
-    expect(acwrBand(1.4)).toBe('caution')
-    expect(acwrBand(ACWR_DANGER)).toBe('danger')
-  })
-  it('refuses a zero chronic load', () => {
-    expect(() => acwr([1], [0, 0])).toThrow()
   })
 })
 
@@ -108,11 +91,12 @@ describe('decide (the poster tree)', () => {
 })
 
 describe('recommend', () => {
-  it('gives one plain step per label and mode', () => {
-    expect(recommend('HIGH', 'athlete')).toMatch(/Reduce sprint volume 20% today/)
-    expect(recommend('MEDIUM', 'older')).toMatch(/Do your balance exercises today/)
-    expect(recommend('MEDIUM', 'athlete', { leaf: 'medium-movement' })).toMatch(/landing/)
-    expect(recommend('LOW', 'older')).toMatch(/Normal day/)
+  it('gives one plain step per label', () => {
+    expect(recommend('HIGH')).toMatch(/Call your doctor today/)
+    expect(recommend('MEDIUM')).toMatch(/Do your balance exercises today/)
+    expect(recommend('MEDIUM', { leaf: 'medium-movement' })).toMatch(/sit-to-stand/)
+    expect(recommend('LOW')).toMatch(/Normal day/)
+    expect(recommend('HIGH', { fallDetected: true })).toMatch(/Stay where you are/)
   })
 })
 
